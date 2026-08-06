@@ -1,0 +1,55 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <Game_Path>Y:\Games\steamapps\common\Nuclear Option\NuclearOption_Data\Managed</Game_Path>
+
+        <TargetFramework>net48</TargetFramework>
+        <AssemblyName>NO_AIPlaneUnstuck</AssemblyName>
+        <RootNamespace>NO_AIPlaneUnstuck</RootNamespace>
+        <Version>0.34.1.1</Version>
+
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <LangVersion>latest</LangVersion>
+        <Nullable>enable</Nullable>
+
+        <RestoreAdditionalProjectSources>
+            https://api.nuget.org/v3/index.json;
+            https://nuget.bepinex.dev/v3/index.json;
+            https://nuget.samboy.dev/v3/index.json
+        </RestoreAdditionalProjectSources>
+
+        <NoWarn>$(NoWarn);CS0436</NoWarn>
+
+        <ModDestination>$(Game_Path)\..\..\BepInEx\plugins</ModDestination>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="BepInEx.AssemblyPublicizer.MSBuild" Version="0.4.3" PrivateAssets="all" ExcludeAssets="runtime"/>
+        <PackageReference Include="BepInEx.Analyzers" Version="1.*" PrivateAssets="all"/>
+        <PackageReference Include="BepInEx.Core" Version="5.*"/>
+        <PackageReference Include="BepInEx.PluginInfoProps" Version="2.*"/>
+        <PackageReference Include="UnityEngine.Modules" Version="2022.3.62" IncludeAssets="compile"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <Reference Include="Assembly-CSharp" HintPath="$(Game_Path)\Assembly-CSharp.dll" Private="False" Publicize="True">
+            <Aliases>global,NuclearOption</Aliases>
+        </Reference>
+        <Reference Include="Mirage" HintPath="$(Game_Path)\Mirage.dll" Private="False" Publicize="True"/>
+    </ItemGroup>
+
+    <ItemGroup Condition="'$(TargetFramework.TrimEnd(`0123456789`))' == 'net'">
+        <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.2" PrivateAssets="all"/>
+    </ItemGroup>
+
+    <Target Name="PostBuild" AfterTargets="Build" Condition="'$(Configuration)' == 'Release' AND '$(ModDestination)' != ''">
+        <!-- Create an item for all .dll files in the output directory -->
+        <CreateItem Include="$(OutDir)*.dll">
+            <Output TaskParameter="Include" ItemName="DllFiles"/>
+        </CreateItem>
+
+        <!-- Copy the build output -->
+        <Message Text="Copying build output assemblies from $(OutDir)*.dll to $(ModDestination)\$(AssemblyName)" Importance="high"/>
+        <Copy SourceFiles="@(DllFiles)" DestinationFolder="$(ModDestination)\$(AssemblyName)"/>
+    </Target>
+</Project>
