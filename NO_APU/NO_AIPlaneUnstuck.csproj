@@ -2,11 +2,17 @@
 
     <PropertyGroup>
         <Game_Path>Y:\Games\steamapps\common\Nuclear Option\NuclearOption_Data\Managed</Game_Path>
+        <ModDestination>$(Game_Path)\..\..\BepInEx\plugins</ModDestination>
 
         <TargetFramework>net48</TargetFramework>
-        <AssemblyName>NO_AIPlaneUnstuck</AssemblyName>
-        <RootNamespace>NO_AIPlaneUnstuck</RootNamespace>
-        <Version>0.34.1.1</Version>
+        <UnityEditorPath>C:\Program Files\Unity\Hub\Editor\2022.3.62f2</UnityEditorPath>
+        <UnityFrameworkPath>$(UnityEditorPath)\Editor\Data\UnityReferenceAssemblies\unity-4.8-api</UnityFrameworkPath>
+        <FrameworkPathOverride>$(UnityFrameworkPath)</FrameworkPathOverride>
+        <AssemblySearchPaths>$(UnityFrameworkPath)\Facades;$(AssemblySearchPaths)</AssemblySearchPaths>
+
+        <AssemblyName>Apul.NO_AIPlaneUnstuck</AssemblyName>
+        <RootNamespace>NO_APU</RootNamespace>
+        <Version>0.34.2.2</Version>
 
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <LangVersion>latest</LangVersion>
@@ -19,8 +25,6 @@
         </RestoreAdditionalProjectSources>
 
         <NoWarn>$(NoWarn);CS0436</NoWarn>
-
-        <ModDestination>$(Game_Path)\..\..\BepInEx\plugins</ModDestination>
     </PropertyGroup>
 
     <ItemGroup>
@@ -36,6 +40,10 @@
             <Aliases>global,NuclearOption</Aliases>
         </Reference>
         <Reference Include="Mirage" HintPath="$(Game_Path)\Mirage.dll" Private="False" Publicize="True"/>
+        <Reference Include="netstandard">
+            <HintPath>$(UnityFrameworkPath)\Facades\netstandard.dll</HintPath>
+            <Private>False</Private>
+        </Reference>
     </ItemGroup>
 
     <ItemGroup Condition="'$(TargetFramework.TrimEnd(`0123456789`))' == 'net'">

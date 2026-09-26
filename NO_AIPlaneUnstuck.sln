@@ -1,6 +1,6 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NO_AIPlaneUnstuck", "NO_AIPlaneUnstuck.csproj", "{1F44DC37-3400-403D-ACD6-E29DDAE8B8E5}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NO_AIPlaneUnstuck", "NO_APU\NO_AIPlaneUnstuck.csproj", "{1F44DC37-3400-403D-ACD6-E29DDAE8B8E5}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
