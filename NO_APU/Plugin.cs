@@ -18,6 +18,7 @@ public class Plugin : BaseUnityPlugin
     internal static ConfigEntry<float> LandingBlockRange { get; private set; } = null!;
     private static ConfigEntry<float> ObstacleAvoidanceCone { get; set; } = null!;
     private static ConfigEntry<bool> AggressiveTakeoffPriority { get; set; } = null!;
+    private static ConfigEntry<float> TakeoffPriorityOverrideTimeout { get; set; } = null!;
     
     internal static ConfigEntry<bool> AllowAlternateBaseSpawn { get; private set; } = null!;
     internal static ConfigEntry<float> Rank0DiversionChance { get; private set; } = null!;
@@ -38,6 +39,7 @@ public class Plugin : BaseUnityPlugin
     internal static float CachedProgressTimeout { get; private set; }
     internal static float CachedObstacleAvoidanceDot { get; private set; }
     internal static bool CachedAggressiveTakeoffPriority { get; private set; }
+    internal static float CachedTakeoffPriorityOverrideTimeout { get; private set; }
     internal static bool CachedDebugLogs { get; private set; }
     
     private void Awake()
@@ -67,6 +69,10 @@ public class Plugin : BaseUnityPlugin
         AggressiveTakeoffPriority = Config.Bind("Taxi", "Aggressive Takeoff Priority", true,
             "When an AI plane is first in the takeoff queue, ignore normal taxi obstacle braking " +
             "and runway crossing waits, so it commits to entering the runway and taking off.");
+        TakeoffPriorityOverrideTimeout = Config.Bind("Taxi", "Takeoff Priority Override Timeout", 15f,
+            "How long the first aircraft in the takeoff queue may be blocked by a landing approach " +
+            "reservation before it ignores that reservation. Aircraft physically on the runway still block takeoff. " +
+            "Set to 0 to disable.");
         
         AllowAlternateBaseSpawn = Config.Bind("Deployment", "0. Enable Alternate Airbase Spawn", true,
             "Enable allowing planes to spawn at least congested alternative airports, with configurable " +
@@ -107,6 +113,8 @@ public class Plugin : BaseUnityPlugin
         ProgressTimeout.SettingChanged += (_, _) => CacheSettings();
         ObstacleAvoidanceCone.SettingChanged += (_, _) => CacheSettings();
         AggressiveTakeoffPriority.SettingChanged += (_, _) => CacheSettings();
+        TakeoffPriorityOverrideTimeout.SettingChanged += (_, _) => CacheSettings();
+        
         DebugLogs.SettingChanged += (_, _) => CacheSettings();
         CacheSettings();
         
@@ -127,6 +135,7 @@ public class Plugin : BaseUnityPlugin
         CachedProgressDistanceSqr = CachedProgressDistance * CachedProgressDistance;
         CachedProgressTimeout = Mathf.Max(ProgressTimeout.Value, 0.1f);
         CachedAggressiveTakeoffPriority = AggressiveTakeoffPriority.Value;
+        CachedTakeoffPriorityOverrideTimeout = TakeoffPriorityOverrideTimeout.Value;
         
         var cone = Mathf.Clamp(ObstacleAvoidanceCone.Value, 0f, 360f);
         CachedObstacleAvoidanceDot = Mathf.Cos(cone * 0.5f * Mathf.Deg2Rad);

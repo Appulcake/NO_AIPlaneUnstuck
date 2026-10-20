@@ -77,7 +77,7 @@ internal static class BoteCompatibility
         
         _shipDefinitions = ships;
         Plugin.Logger.LogInfo(
-            $"BOTE compatibility initialized with {_shipDefinitions.Count} excluded ship definitions.");
+            $"BOTE compatibility initialised with {_shipDefinitions.Count} excluded ship definitions.");
         return true;
     }
     

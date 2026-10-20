@@ -12,6 +12,7 @@ namespace NO_APU;
 internal static class HarmonyPatches
 {
     private static ConditionalWeakTable<AIPilotTaxiState, TaxiingPlanesTracker> TrackedPlanes = new();
+    private static ConditionalWeakTable<Airbase.Runway, RunwayBlockTracker> RunwayBlockTrackers = new();
     
     private static readonly List<Airbase> SpawnableAirbases = [];
     private static readonly Dictionary<Airbase, int> PendingAirbaseSpawns = new();
@@ -32,12 +33,12 @@ internal static class HarmonyPatches
         var now = Time.timeSinceLevelLoad;
         
         // Initialise tracking new plane
-        if (!tracker.Initialized || !ReferenceEquals(tracker.Aircraft, aircraft))
+        if (!tracker.Initialised || !ReferenceEquals(tracker.Aircraft, aircraft))
         {
             tracker.Aircraft = aircraft;
             tracker.AnchorPosition = currentPosition;
             tracker.LastProgressTime = now;
-            tracker.Initialized = true;
+            tracker.Initialised = true;
             tracker.Logged = false;
             return;
         }
@@ -78,6 +79,7 @@ internal static class HarmonyPatches
     internal static void ResetTrackers()
     {
         TrackedPlanes = new ConditionalWeakTable<AIPilotTaxiState, TaxiingPlanesTracker>();
+        RunwayBlockTrackers = new ConditionalWeakTable<Airbase.Runway, RunwayBlockTracker>();
     }
     
     // AI planes by default choose to exclusively try to spawn from the nearest airbase to the perceived threat/objective
@@ -260,23 +262,43 @@ internal static class HarmonyPatches
     [HarmonyPrefix]
     private static bool IsAvailableForTakeoffPrefix(Airbase.Runway __instance, Aircraft querier, ref bool __result)
     {
-        if (HasBlockingLanding(__instance, querier))
+        var hasHead = TryGetValidTakeoffHead(__instance, out var queueHead);
+        var isQueueHead = hasHead && queueHead == querier;
+        var tracker = RunwayBlockTrackers.GetValue(__instance, _ => new RunwayBlockTracker());
+        
+        // New aircraft became queue head/leader means restart any blocked timer
+        if (tracker.QueueHead != queueHead)
+        {
+            tracker.QueueHead = queueHead;
+            tracker.BlockedSince = -1f;
+        }
+        
+        // Check for blocked by landing (plane physically on runway or something is within LandingBlockRange)
+        var blockedByLanding = HasBlockingLanding(__instance, querier, false);
+        var ignoreApproachReservation = false;
+        if (blockedByLanding && Plugin.CachedAggressiveTakeoffPriority && isQueueHead)
+        {
+            if (tracker.BlockedSince < 0f)
+                tracker.BlockedSince = Time.timeSinceLevelLoad;
+            var timeout = Plugin.CachedTakeoffPriorityOverrideTimeout;
+            if (timeout > 0f && Time.timeSinceLevelLoad - tracker.BlockedSince >= timeout)
+                ignoreApproachReservation = true;
+        }
+        else
+        {
+            tracker.BlockedSince = -1f;
+        }
+        
+        if (HasBlockingLanding(__instance, querier, ignoreApproachReservation))
         {
             __result = false;
             return false;
         }
         
-        if (__instance.takeoffQueue.TryPeek(out var queued))
+        if (hasHead)
         {
-            if (queued == null || queued.disabled)
-            {
-                __instance.takeoffQueue.Dequeue();
-            }
-            else
-            {
-                __result = queued == querier;
-                return false;
-            }
+            __result = isQueueHead;
+            return false;
         }
         
         if (__instance.OtherAircraftUsingRunway(querier))
@@ -296,12 +318,42 @@ internal static class HarmonyPatches
         return false;
     }
     
+    private static bool TryGetValidTakeoffHead(Airbase.Runway runway, out Aircraft? queued)
+    {
+        while (runway.takeoffQueue.TryPeek(out queued))
+        {
+            if (queued == null || queued.disabled)
+            {
+                runway.takeoffQueue.Dequeue();
+                continue;
+            }
+            
+            if (queued.pilots == null || queued.pilots.Length == 0 || queued.pilots[0] == null)
+                return true;
+            
+            var pilot = queued.pilots[0];
+            if (pilot.playerControlled || pilot.pilotType != Pilot.PilotType.Plane)
+                return true;
+            
+            if (pilot.currentState is AIPilotTaxiState or AIPilotTakeoffState) return true;
+            
+            if (Plugin.CachedDebugLogs)
+                Plugin.Logger.LogInfo($"Removing stale takeoff reservation for {queued.name} " +
+                                      $"from runway {runway.index}. Current state: {pilot.GetCurrentState()}");
+            
+            runway.takeoffQueue.Dequeue();
+        }
+        
+        queued = null;
+        return false;
+    }
+    
     [HarmonyPatch(typeof(Airbase.Runway), nameof(Airbase.Runway.OtherAircraftUsingRunway))]
     [HarmonyPrefix]
     private static bool OtherAircraftUsingRunwayPrefix(Airbase.Runway __instance, Aircraft checker, ref bool __result)
     {
-        if (HasBlockingLanding(__instance, checker) ||
-            (__instance.takeoffQueue.TryPeek(out var queued) && queued != null && queued != checker))
+        if (HasBlockingLanding(__instance, checker, false) ||
+            (TryGetValidTakeoffHead(__instance, out var queued) && queued != checker))
         {
             __result = true;
             return false;
@@ -311,10 +363,10 @@ internal static class HarmonyPatches
         return false;
     }
     
-    private static bool HasBlockingLanding(Airbase.Runway runway, Aircraft checker)
+    private static bool HasBlockingLanding(Airbase.Runway runway, Aircraft checker, bool ignoreApproachReservation)
     {
+        RemoveStaleLandingReservations(runway);
         var range = Mathf.Max(Plugin.LandingBlockRange.Value, 0f);
-        
         foreach (var landing in runway.GetLandingList())
         {
             if (landing == null || landing == checker || landing.disabled)
@@ -323,11 +375,44 @@ internal static class HarmonyPatches
             if (runway.AircraftOnRunway(landing))
                 return true;
             
-            if (range > 0f && runway.AircraftOnApproach(landing, range, false))
+            if (!ignoreApproachReservation && range > 0f && runway.AircraftOnApproach(landing, range, false))
                 return true;
         }
         
         return false;
+    }
+    
+    private static void RemoveStaleLandingReservations(Airbase.Runway runway)
+    {
+        var landings = runway.GetLandingList();
+        for (var i = landings.Count - 1; i >= 0; i--)
+        {
+            var landing = landings[i];
+            if (landing == null || landing.disabled)
+            {
+                landings.RemoveAt(i);
+                continue;
+            }
+            
+            if (landing.pilots == null || landing.pilots.Length == 0)
+                continue;
+            
+            var pilot = landing.pilots[0];
+            if (pilot == null || pilot.playerControlled || pilot.pilotType != Pilot.PilotType.Plane)
+                continue;
+            
+            if (pilot.currentState is AIPilotLandingState or AIPilotShortLandingState)
+                continue;
+            
+            if (runway.AircraftOnRunway(landing))
+                continue;
+            
+            if (Plugin.CachedDebugLogs)
+                Plugin.Logger.LogInfo($"Removing stale landing reservation for {landing.name} " +
+                                      $"from runway {runway.index}. Current state: {pilot.GetCurrentState()}");
+            
+            landings.RemoveAt(i);
+        }
     }
     
     // When an AI plane becomes the next up in slot to take-off, if its brake check is triggered it'll dequeue
@@ -335,10 +420,20 @@ internal static class HarmonyPatches
     // take-off suddenly stops because another taxiing plane approaches from another angle, and it brakes for it
     // which then cancels its take-off, and now both are waiting
     // This prevents that from giving up its take-off slot in such an event
+    // Additional change: allow an aircraft to claim slot in queue even if runway is unavailable
     [HarmonyPatch(typeof(AIPilotTaxiState), nameof(AIPilotTaxiState.WaitingForTakeoffClearance))]
     [HarmonyPrefix]
-    private static void WaitingForTakeoffClearancePrefix(AIPilotTaxiState __instance, out bool __state)
+    private static void WaitingForTakeoffClearancePrefix(AIPilotTaxiState __instance, float destinationDist,
+        out bool __state)
     {
+        if (Plugin.CachedAggressiveTakeoffPriority && !__instance.takeoffQueued && destinationDist <= 100f &&
+            __instance.takeoffRunway != null && __instance.aircraft != null &&
+            !TryGetValidTakeoffHead(__instance.takeoffRunway, out _))
+        {
+            __instance.takeoffRunway.QueueTakeoff(__instance.aircraft);
+            __instance.takeoffQueued = true;
+        }
+        
         __state = __instance.takeoffQueued;
     }
     
@@ -366,10 +461,7 @@ internal static class HarmonyPatches
         if (!state.takeoffQueued || state.takeoffRunway == null || state.aircraft == null)
             return false;
         
-        if (!state.takeoffRunway.takeoffQueue.TryPeek(out var queued))
-            return false;
-        
-        return queued == state.aircraft;
+        return TryGetValidTakeoffHead(state.takeoffRunway, out var queued) && queued == state.aircraft;
     }
     
     // Allow increasing how many AI plane spawn attempts happen per tick, optionally scaling up when there's a larger
@@ -551,8 +643,14 @@ internal static class HarmonyPatches
     {
         internal Aircraft Aircraft = null!;
         internal GlobalPosition AnchorPosition;
-        internal bool Initialized;
+        internal bool Initialised;
         internal float LastProgressTime;
         internal bool Logged;
+    }
+    
+    private sealed class RunwayBlockTracker
+    {
+        internal float BlockedSince = -1f;
+        internal Aircraft? QueueHead;
     }
 }

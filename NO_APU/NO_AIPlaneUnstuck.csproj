@@ -12,7 +12,7 @@
 
         <AssemblyName>Apul.NO_AIPlaneUnstuck</AssemblyName>
         <RootNamespace>NO_APU</RootNamespace>
-        <Version>0.34.2.2</Version>
+        <Version>0.34.2.3</Version>
 
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <LangVersion>latest</LangVersion>
