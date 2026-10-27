@@ -8,7 +8,8 @@ namespace NO_APU;
 internal static class BoteCompatibility
 {
     internal const string BoteGuid = "com.minec.bote";
-    private const string ModAssetsTypeName = "NOComponentWIP.ModAssets";
+    private const string ModAssetsTypeNameOld = "NOComponentWIP.ModAssets";
+    private const string ModAssetsTypeNameNew = "BoscaliOceanTrainingExercise.ModAssets";
     private static MethodInfo? _modAssetsGetter;
     private static FieldInfo? _serializedShipDefinitionsField;
     private static HashSet<AircraftDefinition>? _shipDefinitions;
@@ -22,11 +23,11 @@ internal static class BoteCompatibility
         if (!Installed)
             return;
         
-        var modAssetsType = AccessTools.TypeByName(ModAssetsTypeName);
+        var modAssetsType = AccessTools.TypeByName(ModAssetsTypeNameNew) ?? AccessTools.TypeByName(ModAssetsTypeNameOld);
         if (modAssetsType == null)
         {
-            Plugin.Logger.LogWarning("BOTE detected, but NOComponentWIP.ModAssets could not be found. " +
-                                     "BOTE deployment compatibility will fall back to BOTE's own handling.");
+            Plugin.Logger.LogWarning("BOTE detected, but NOComponentWIP/BoscaliOceanTrainingExercise ModAssets could " +
+                                     "not be found. BOTE deployment compatibility will fall back to BOTE's own handling.");
             return;
         }
         
